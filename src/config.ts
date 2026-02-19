@@ -86,7 +86,7 @@ export const InfluxionConfigSchema = z.object({
   /** Logical name for this OpenClaw installation. */
   deploymentId: z.string().min(1),
   /** API base URL. Override for self-hosted Influxion. */
-  apiUrl: z.string().url().default("https://api.influxion.ai"),
+  apiUrl: z.url().default("https://api.influxion.io"),
   upload: InfluxionUploadConfigSchema as z.ZodType<InfluxionUploadConfig>,
   filter: InfluxionFilterConfigSchema as z.ZodType<InfluxionFilterConfig>,
 });

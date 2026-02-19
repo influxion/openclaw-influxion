@@ -15,7 +15,7 @@
     "apiUrl": {
       "label": "API URL",
       "advanced": true,
-      "placeholder": "https://api.influxion.ai",
+      "placeholder": "https://api.influxion.io",
       "help": "Override for self-hosted Influxion or testing"
     },
     "upload.every": {

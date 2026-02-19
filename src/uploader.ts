@@ -120,7 +120,7 @@ async function uploadFileWithRetry(
 
   const body = ndJsonLines.join("\n");
   const etag = computeEtag(content);
-  const url = `${config.apiUrl.replace(/\/+$/, "")}/v1/ingest/sessions`;
+  const url = `${config.apiUrl.replace(/\/+$/, "")}/v1/openclaw/ingest/sessions`;
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= config.upload.retryAttempts; attempt++) {
