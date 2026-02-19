@@ -1,5 +1,5 @@
 {
-  "name": "openclaw-influxion",
+  "name": "influxion",
   "version": "0.1.0",
   "description": "OpenClaw plugin that uploads agent session transcripts to Influxion for performance evaluation",
   "type": "module",

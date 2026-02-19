@@ -1,11 +1,11 @@
-# openclaw-influxion
+# OpenClaw Influxion Plugin
 
 An [OpenClaw](https://openclaw.ai) plugin that periodically collects agent session transcripts and uploads them to [Influxion](https://influxion.ai) for agent performance evaluation.
 
 ## Installation
 
 ```bash
-openclaw plugins install openclaw-influxion
+openclaw plugins install influxion
 ```
 
 Or for local development from this repo:
