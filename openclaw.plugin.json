@@ -1,0 +1,90 @@
+{
+  "id": "influxion",
+  "uiHints": {
+    "apiKey": {
+      "label": "Influxion API Key",
+      "sensitive": true,
+      "placeholder": "inf_live_...",
+      "help": "API key from your Influxion workspace"
+    },
+    "deploymentId": {
+      "label": "Deployment ID",
+      "placeholder": "my-openclaw-setup",
+      "help": "A logical name for this OpenClaw installation (e.g. work-laptop, home-server)"
+    },
+    "apiUrl": {
+      "label": "API URL",
+      "advanced": true,
+      "placeholder": "https://api.influxion.ai",
+      "help": "Override for self-hosted Influxion or testing"
+    },
+    "upload.every": {
+      "label": "Upload Interval",
+      "placeholder": "15m",
+      "help": "How often to upload (e.g. 5m, 1h, 30m). Set to 0 to disable automatic uploads."
+    },
+    "filter.agents.allow": {
+      "label": "Agent Allow List",
+      "advanced": true,
+      "help": "If set, only these agents are uploaded (comma-separated IDs)"
+    },
+    "filter.agents.deny": {
+      "label": "Agent Deny List",
+      "advanced": true,
+      "help": "These agents are never uploaded (deny takes precedence over allow)"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["apiKey", "deploymentId"],
+    "properties": {
+      "apiKey": {
+        "type": "string"
+      },
+      "deploymentId": {
+        "type": "string"
+      },
+      "apiUrl": {
+        "type": "string"
+      },
+      "upload": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "every": { "type": "string" },
+          "retryAttempts": { "type": "number" },
+          "retryBackoffMs": { "type": "number" },
+          "timeoutMs": { "type": "number" },
+          "maxFilesPerRun": { "type": "number" },
+          "maxBytesPerRun": { "type": "number" }
+        }
+      },
+      "filter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "type": "array", "items": { "type": "string" } },
+              "deny": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "sessions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "deny": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "minMessages": { "type": "number" },
+          "minBytes": { "type": "number" },
+          "includeSkills": { "type": "boolean" },
+          "includeConfig": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
