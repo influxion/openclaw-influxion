@@ -25,11 +25,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const NOT_CONFIGURED_MSG =
+  "Influxion is not configured. Set apiKey and deploymentId to enable uploads.\n" +
+  "  openclaw configure set influxion.apiKey <key>\n" +
+  "  openclaw configure set influxion.deploymentId <name>";
+
 /**
  * Register the `openclaw influxion` subcommand group.
- * Returns an `OpenClawPluginCliRegistrar` that closes over the resolved config.
+ * Accepts `null` when the plugin is installed but not yet configured —
+ * commands will print a helpful message instead of failing.
  */
-export function registerInfluxionCli(cfg: InfluxionConfig): OpenClawPluginCliRegistrar {
+export function registerInfluxionCli(cfg: InfluxionConfig | null): OpenClawPluginCliRegistrar {
   return ({ program }) => {
     const influxion = program
       .command("influxion")
@@ -40,6 +46,11 @@ export function registerInfluxionCli(cfg: InfluxionConfig): OpenClawPluginCliReg
       .command("status")
       .description("Show Influxion plugin status and pending file count")
       .action(async () => {
+        if (!cfg) {
+          console.warn(NOT_CONFIGURED_MSG);
+          return;
+        }
+
         const stateDir = resolveStateDir();
         const ledger = await readLedger(stateDir);
         const pending = await collectEligibleFiles(
@@ -78,6 +89,11 @@ export function registerInfluxionCli(cfg: InfluxionConfig): OpenClawPluginCliReg
       .command("sync")
       .description("Trigger an immediate upload cycle (blocking)")
       .action(async () => {
+        if (!cfg) {
+          console.warn(NOT_CONFIGURED_MSG);
+          return;
+        }
+
         const stateDir = resolveStateDir();
 
         console.log("Running Influxion upload cycle...");

@@ -90,14 +90,23 @@ export async function runUploadCycle(
 /**
  * Create the background UploadService that runs on a configurable interval.
  * Registered via `api.registerService()` in the plugin entry point.
+ * Accepts `null` when the plugin is installed but not yet configured — the
+ * service will log a warning on start and do nothing until configured.
  */
-export function createUploadService(cfg: InfluxionConfig): OpenClawPluginService {
+export function createUploadService(cfg: InfluxionConfig | null): OpenClawPluginService {
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   return {
     id: "influxion",
 
     async start(ctx: OpenClawPluginServiceContext) {
+      if (!cfg) {
+        ctx.logger.warn(
+          "influxion: upload service not started — set apiKey and deploymentId to enable uploads",
+        );
+        return;
+      }
+
       const intervalMs = parseIntervalMs(cfg.upload.every);
 
       ctx.logger.info(

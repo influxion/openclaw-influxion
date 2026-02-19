@@ -37,7 +37,6 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["apiKey", "deploymentId"],
     "properties": {
       "apiKey": {
         "type": "string"

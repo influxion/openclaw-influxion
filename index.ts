@@ -14,29 +14,28 @@ const plugin = {
   configSchema: emptyPluginConfigSchema(),
 
   register(api: OpenClawPluginApi) {
-    // Parse and validate the plugin config supplied by the user.
-    // If required fields (apiKey, deploymentId) are missing, log a clear error and bail.
+    // Parse the plugin config. A missing or incomplete config is not fatal —
+    // the plugin registers normally but skips uploads until configured.
     const parseResult = InfluxionConfigSchema.safeParse(api.pluginConfig ?? {});
-    if (!parseResult.success) {
-      api.logger.error(
-        "influxion: invalid configuration — plugin disabled. " +
-          "Ensure 'apiKey' and 'deploymentId' are set. " +
-          `Details: ${parseResult.error.message}`,
+    const cfg = parseResult.success ? parseResult.data : null;
+
+    if (!cfg) {
+      api.logger.warn(
+        "influxion: missing or invalid configuration — uploads disabled. " +
+          "Set apiKey and deploymentId to enable. " +
+          `(${parseResult.error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")})`,
       );
-      return;
     }
 
-    const cfg = parseResult.data;
-
-    // Register the background upload service
+    // Always register the service (it no-ops when cfg is null)
     api.registerService(createUploadService(cfg));
 
-    // Register the `openclaw influxion` CLI subcommand group
+    // Always register the CLI so users can run `openclaw influxion status`
     api.registerCli(registerInfluxionCli(cfg), { commands: ["influxion"] });
 
-    // Hook: session ended — the service will pick up the updated file on next run
-    // via mtime comparison. We log here so users can see activity.
+    // Hook: session ended
     api.on("session_end", (event, ctx) => {
+      if (!cfg) return;
       const agentId = ctx.agentId ?? "unknown";
       api.logger.info(
         `influxion: session ended — agent=${agentId} session=${event.sessionId} ` +
@@ -44,9 +43,9 @@ const plugin = {
       );
     });
 
-    // Hook: compaction finished — the transcript has been rewritten, so it will
-    // appear dirty to the ledger on the next scheduled run.
+    // Hook: compaction finished — transcript rewritten, will appear dirty on next run
     api.on("after_compaction", (event, ctx) => {
+      if (!cfg) return;
       const agentId = ctx.agentId ?? "unknown";
       api.logger.info(
         `influxion: compaction complete — agent=${agentId} ` +
@@ -55,9 +54,11 @@ const plugin = {
       );
     });
 
-    api.logger.info(
-      `influxion: plugin registered — deployment=${cfg.deploymentId} interval=${cfg.upload.every}`,
-    );
+    if (cfg) {
+      api.logger.info(
+        `influxion: plugin registered — deployment=${cfg.deploymentId} interval=${cfg.upload.every}`,
+      );
+    }
   },
 };
 
