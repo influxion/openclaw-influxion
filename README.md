@@ -1,6 +1,6 @@
 # OpenClaw Influxion Plugin
 
-An [OpenClaw](https://openclaw.ai) plugin that periodically collects agent session transcripts and uploads them to [Influxion](https://influxion.ai) for agent performance evaluation.
+An [OpenClaw](https://openclaw.ai) plugin that periodically collects agent session transcripts and uploads them to [Influxion](https://www.influxion.io/) for agent performance evaluation.
 
 ## Installation
 
@@ -16,7 +16,30 @@ openclaw plugins install /path/to/openclaw-influxion
 
 ## Configuration
 
-Add the following to `~/.openclaw/openclaw.json`:
+Plugin config lives inside the `plugins.entries.influxion.config` key in `~/.openclaw/openclaw.json`. Edit the file directly — OpenClaw has no `configure set` subcommand for arbitrary keys.
+
+### Minimal setup
+
+```jsonc
+// ~/.openclaw/openclaw.json
+{
+  "plugins": {
+    "entries": {
+      "influxion": {
+        "enabled": true,
+        "config": {
+          "apiKey": "sk-xxxxxxxxxxxx",
+          "deploymentId": "my-openclaw-setup"
+        }
+      }
+    }
+  }
+}
+```
+
+Restart the gateway after saving (`openclaw gateway restart` or via the OpenClaw menu bar app).
+
+### All options
 
 ```jsonc
 {
@@ -25,28 +48,32 @@ Add the following to `~/.openclaw/openclaw.json`:
       "influxion": {
         "enabled": true,
         "config": {
-          "apiKey": "inf_live_xxxxxxxxxxxx",
+          // Required
+          "apiKey": "sk-xxxxxxxxxxxx",
           "deploymentId": "my-openclaw-setup",
 
+          // Optional — override the API base URL (e.g. for self-hosted or local dev)
+          "apiUrl": "https://api.influxion.io",
+
           "upload": {
-            "every": "15m",
-            "retryAttempts": 3,
+            "every": "15m",        // Upload interval. Accepts: 30s, 5m, 1h, etc. Set to "0" to disable.
+            "retryAttempts": 3,    // Number of retry attempts on failure
             "retryBackoffMs": 5000,
             "timeoutMs": 30000,
             "maxFilesPerRun": 50,
-            "maxBytesPerRun": 10485760
+            "maxBytesPerRun": 10485760  // 10 MB
           },
 
           "filter": {
             "agents": {
-              "allow": [],
-              "deny": []
+              "allow": [],  // If non-empty, only these agent IDs are uploaded
+              "deny": []    // These agent IDs are never uploaded (takes precedence over allow)
             },
             "sessions": {
-              "deny": ["tmp-*", "scratch-*"]
+              "deny": ["tmp-*", "scratch-*"]  // Glob patterns for session IDs to skip
             },
-            "minMessages": 2,
-            "minBytes": 512
+            "minMessages": 2,   // Skip sessions with fewer than this many messages
+            "minBytes": 512     // Skip session files smaller than this
           }
         }
       }
@@ -80,7 +107,3 @@ npm run typecheck
 3. It applies agent and session filters to exclude unwanted sessions.
 4. New or modified files (tracked via an upload ledger at `~/.openclaw/extensions/influxion/state.json`) are uploaded as NDJSON to the Influxion API.
 5. The ledger is updated so unchanged files are skipped on future runs.
-
-## License
-
-MIT
