@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "openclaw": "file:../openclaw",
+    "openclaw": "2026.2.17",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
