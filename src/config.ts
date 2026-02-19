@@ -81,7 +81,7 @@ export type InfluxionUploadConfig = z.infer<typeof InfluxionUploadConfigBaseSche
 export type InfluxionFilterConfig = z.infer<typeof InfluxionFilterConfigBaseSchema>;
 
 export const InfluxionConfigSchema = z.object({
-  /** Influxion API key (e.g. "inf_live_xxxx"). */
+  /** Influxion API key (e.g. "sk-xxxx"). */
   apiKey: z.string().min(1),
   /** Logical name for this OpenClaw installation. */
   deploymentId: z.string().min(1),

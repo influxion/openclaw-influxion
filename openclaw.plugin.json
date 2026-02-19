@@ -4,7 +4,7 @@
     "apiKey": {
       "label": "Influxion API Key",
       "sensitive": true,
-      "placeholder": "inf_live_...",
+      "placeholder": "sk-...",
       "help": "API key from your Influxion workspace"
     },
     "deploymentId": {
@@ -51,12 +51,24 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "every": { "type": "string" },
-          "retryAttempts": { "type": "number" },
-          "retryBackoffMs": { "type": "number" },
-          "timeoutMs": { "type": "number" },
-          "maxFilesPerRun": { "type": "number" },
-          "maxBytesPerRun": { "type": "number" }
+          "every": {
+            "type": "string"
+          },
+          "retryAttempts": {
+            "type": "number"
+          },
+          "retryBackoffMs": {
+            "type": "number"
+          },
+          "timeoutMs": {
+            "type": "number"
+          },
+          "maxFilesPerRun": {
+            "type": "number"
+          },
+          "maxBytesPerRun": {
+            "type": "number"
+          }
         }
       },
       "filter": {
@@ -67,21 +79,44 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "allow": { "type": "array", "items": { "type": "string" } },
-              "deny": { "type": "array", "items": { "type": "string" } }
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deny": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
           "sessions": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "deny": { "type": "array", "items": { "type": "string" } }
+              "deny": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "minMessages": { "type": "number" },
-          "minBytes": { "type": "number" },
-          "includeSkills": { "type": "boolean" },
-          "includeConfig": { "type": "boolean" }
+          "minMessages": {
+            "type": "number"
+          },
+          "minBytes": {
+            "type": "number"
+          },
+          "includeSkills": {
+            "type": "boolean"
+          },
+          "includeConfig": {
+            "type": "boolean"
+          }
         }
       }
     }
