@@ -102,6 +102,35 @@ npm test
 npm run typecheck
 ```
 
+Uninstalling and reinstalling during development is a little manual.
+You should uninstall with:
+
+```bash
+openclaw plugins uninstall influxion
+```
+
+You then should delete the directory at `~/.openclaw/extensions/influxion` and probably restart the OpenClaw gateway.
+Sometimes the gateway doesn't stop with `openclaw gateway stop` and you may need to `killall openclaw-gateway`.
+Then start it again and reinstall from your development source.
+
+You will need to reconfigure the plugin in your `openclaw.json` file after every reinstall, e.g.:
+
+```json
+      "influxion": {
+        "enabled": true,
+        "config": {
+          "apiUrl": "http://localhost:8000",
+          "apiKey": "sk-xxxxxxxxxxxx",
+          "deploymentId": "my-openclaw-setup",
+          "projectId": "59b21a5c-d0cd-4477-96ac-ed6e9fcded75"
+        }
+      }
+```
+
+When testing Influxion itself, it's often sufficient to just delete the `state.json` file in the influxion plugin directory.
+The plugin will then upload the sessions logs again, which you can force immediately with `openclaw influxion sync`.
+
+
 ## How It Works
 
 1. The plugin registers a background service that runs on a configurable interval (default: every 15 minutes).
