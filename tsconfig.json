@@ -12,9 +12,6 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2023",
-    "paths": {
-      "openclaw/plugin-sdk": ["./types/openclaw-plugin-sdk.d.ts"]
-    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]

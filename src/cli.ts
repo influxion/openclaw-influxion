@@ -1,6 +1,5 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { OpenClawPluginCliRegistrar } from "openclaw/plugin-sdk";
 import type { InfluxionConfig } from "./config.js";
 import { readLedger } from "./ledger.js";
 import { collectEligibleFiles } from "./collector.js";
@@ -35,8 +34,8 @@ const NOT_CONFIGURED_MSG =
  * Accepts `null` when the plugin is installed but not yet configured —
  * commands will print a helpful message instead of failing.
  */
-export function registerInfluxionCli(cfg: InfluxionConfig | null): OpenClawPluginCliRegistrar {
-  return ({ program }) => {
+export function registerInfluxionCli(cfg: InfluxionConfig | null) {
+  return ({ program }: { program: any }) => {
     const influxion = program
       .command("influxion")
       .description("Influxion agent session upload commands");
@@ -109,7 +108,7 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null): OpenClawPlugi
           console.log("");
           console.log(
             `Done — uploaded: ${result.uploaded}, failed: ${result.failed}, ` +
-              `lines: ${result.totalLines}, bytes: ${formatBytes(result.totalBytes)}`,
+            `lines: ${result.totalLines}, bytes: ${formatBytes(result.totalBytes)}`,
           );
         } catch (err) {
           console.error(`Sync failed: ${String(err)}`);
