@@ -37,6 +37,10 @@
       "label": "Agent Deny List",
       "advanced": true,
       "help": "These agents are never uploaded (deny takes precedence over allow)"
+    },
+    "filter.includeSkills": {
+      "label": "Upload Skills",
+      "help": "Upload your installed skill definitions (SKILL.md files) so Influxion can identify skills gaps. Set to false to disable."
     }
   },
   "configSchema": {
@@ -120,9 +124,6 @@
             "type": "number"
           },
           "includeSkills": {
-            "type": "boolean"
-          },
-          "includeConfig": {
             "type": "boolean"
           }
         }

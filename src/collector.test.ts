@@ -83,6 +83,7 @@ describe("collectEligibleFiles", () => {
       schemaVersion: 1,
       lastRunAt: new Date().toISOString(),
       files: {},
+      skills: {},
     };
     const f = firstRun[0];
     ledger.files[f.ledgerKey] = {

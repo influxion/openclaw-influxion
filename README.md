@@ -1,6 +1,8 @@
 # OpenClaw Influxion Plugin
 
-An [OpenClaw](https://openclaw.ai) plugin that periodically collects agent session transcripts and uploads them to [Influxion](https://www.influxion.io/) for agent performance evaluation.
+An [OpenClaw](https://openclaw.ai) plugin that periodically collects agent session transcripts and skills and shares them with [Influxion](https://www.influxion.io/) for agent performance evaluations and recommendations.
+
+See below for instructions on configuring data sharing at finer granularities.
 
 ## Installation
 
@@ -13,6 +15,24 @@ Or for local development from this repo:
 ```bash
 openclaw plugins install /path/to/openclaw-influxion
 ```
+
+### Warnings
+
+You may see a message like:
+
+> Plugin "influxion" has 1 suspicious code pattern(s). Run "openclaw security audit --deep" for details.
+
+This is expected. If you run the audit, you may see a result like:
+
+```
+plugins.code_safety Plugin "influxion" contains suspicious code patterns
+  Found 1 warning(s) in 14 scanned file(s):
+  - [potential-exfiltration] File read combined with network send — possible data exfiltration (src/uploader.ts:1)
+  Fix: Review the flagged code to ensure it is intentional and safe.
+```
+
+This is accurate and by design.
+See below for configuration options to limit the data shared with Influxion.
 
 ## Configuration
 
@@ -106,7 +126,7 @@ Uninstalling and reinstalling during development is a little manual.
 You should uninstall with:
 
 ```bash
-openclaw plugins uninstall influxion
+openclaw plugins uninstall --force influxion
 ```
 
 You then should delete the directory at `~/.openclaw/extensions/influxion` and probably restart the OpenClaw gateway.

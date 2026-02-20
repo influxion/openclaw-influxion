@@ -28,7 +28,7 @@ const plugin = {
     }
 
     // Always register the service (it no-ops when cfg is null)
-    api.registerService(createUploadService(cfg));
+    api.registerService(createUploadService(cfg, api.config));
 
     // Always register the CLI so users can run `openclaw influxion status`
     api.registerCli(registerInfluxionCli(cfg), { commands: ["influxion"] });

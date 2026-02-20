@@ -1,8 +1,11 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { InfluxionConfig } from "./config.js";
 import { readLedger } from "./ledger.js";
 import { collectEligibleFiles } from "./collector.js";
+import { collectSkills } from "./skills-collector.js";
 import { runUploadCycle } from "./service.js";
 
 /**
@@ -11,6 +14,19 @@ import { runUploadCycle } from "./service.js";
  */
 function resolveStateDir(): string {
   return process.env["OPENCLAW_STATE_DIR"] ?? join(homedir(), ".openclaw");
+}
+
+/**
+ * Load the OpenClaw config from disk.
+ * Returns null if the file is missing or unparseable (graceful degradation).
+ */
+async function loadOpenClawConfig(stateDir: string): Promise<OpenClawConfig | null> {
+  try {
+    const raw = await readFile(join(stateDir, "openclaw.json"), "utf8");
+    return JSON.parse(raw) as OpenClawConfig;
+  } catch {
+    return null;
+  }
 }
 
 function maskApiKey(key: string): string {
@@ -51,33 +67,50 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
         }
 
         const stateDir = resolveStateDir();
-        const ledger = await readLedger(stateDir);
-        const pending = await collectEligibleFiles(
-          stateDir,
-          ledger,
-          cfg.filter,
-          cfg.upload.maxFilesPerRun,
-        );
+        const [ledger, openClawConfig] = await Promise.all([
+          readLedger(stateDir),
+          loadOpenClawConfig(stateDir),
+        ]);
+
+        const [pending, pendingSkills] = await Promise.all([
+          collectEligibleFiles(stateDir, ledger, cfg.filter, cfg.upload.maxFilesPerRun),
+          cfg.filter.includeSkills
+            ? collectSkills(stateDir, ledger, cfg.filter, openClawConfig)
+            : Promise.resolve([]),
+        ]);
 
         const uploadedCount = Object.keys(ledger.files).length;
+        const uploadedSkillsCount = Object.keys(ledger.skills ?? {}).length;
         const lastRun = ledger.lastRunAt ?? "never";
 
         console.log("");
         console.log("Influxion Status");
         console.log("────────────────────────────────");
-        console.log(`  API Key:        ${maskApiKey(cfg.apiKey)}`);
-        console.log(`  Deployment ID:  ${cfg.deploymentId}`);
-        console.log(`  API URL:        ${cfg.apiUrl}`);
-        console.log(`  Upload every:   ${cfg.upload.every}`);
-        console.log(`  Last run:       ${lastRun}`);
-        console.log(`  Pending files:  ${pending.length}`);
-        console.log(`  Ledger entries: ${uploadedCount}`);
+        console.log(`  API Key:          ${maskApiKey(cfg.apiKey)}`);
+        console.log(`  Deployment ID:    ${cfg.deploymentId}`);
+        console.log(`  API URL:          ${cfg.apiUrl}`);
+        console.log(`  Upload every:     ${cfg.upload.every}`);
+        console.log(`  Skills upload:    ${cfg.filter.includeSkills ? "enabled" : "disabled"}`);
+        console.log(`  Last run:         ${lastRun}`);
+        console.log(`  Pending sessions: ${pending.length}`);
+        console.log(`  Session records:  ${uploadedCount}`);
+        if (cfg.filter.includeSkills) {
+          console.log(`  Pending skills:   ${pendingSkills.length}`);
+          console.log(`  Skill records:    ${uploadedSkillsCount}`);
+        }
 
         if (pending.length > 0) {
           console.log("");
-          console.log("  Pending:");
+          console.log("  Pending sessions:");
           for (const f of pending) {
             console.log(`    ${f.agentId}/${f.sessionId}  (${formatBytes(f.stat.size)})`);
+          }
+        }
+        if (cfg.filter.includeSkills && pendingSkills.length > 0) {
+          console.log("");
+          console.log("  Pending skills:");
+          for (const s of pendingSkills) {
+            console.log(`    [${s.source}] ${s.name}`);
           }
         }
         console.log("");
@@ -94,6 +127,7 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
         }
 
         const stateDir = resolveStateDir();
+        const openClawConfig = await loadOpenClawConfig(stateDir);
 
         console.log("Running Influxion upload cycle...");
 
@@ -104,11 +138,15 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
         };
 
         try {
-          const result = await runUploadCycle({ stateDir, logger }, cfg);
+          const result = await runUploadCycle({ stateDir, logger, openClawConfig }, cfg);
           console.log("");
+          const skillsSummary = cfg.filter.includeSkills
+            ? `, skills uploaded: ${result.skillsUploaded}`
+            : "";
           console.log(
-            `Done — uploaded: ${result.uploaded}, failed: ${result.failed}, ` +
-            `lines: ${result.totalLines}, bytes: ${formatBytes(result.totalBytes)}`,
+            `Done — sessions uploaded: ${result.uploaded}, failed: ${result.failed}, ` +
+            `lines: ${result.totalLines}, bytes: ${formatBytes(result.totalBytes)}` +
+            skillsSummary,
           );
         } catch (err) {
           console.error(`Sync failed: ${String(err)}`);

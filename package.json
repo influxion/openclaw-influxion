@@ -1,12 +1,14 @@
 {
   "name": "influxion",
   "version": "0.1.0",
-  "description": "OpenClaw plugin that uploads agent session transcripts to Influxion for performance evaluation",
+  "description": "OpenClaw plugin that shares agent session transcripts and skills with Influxion for performance evaluations and recommendations",
   "type": "module",
   "dependencies": {
+    "js-yaml": "^4.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.0",
     "openclaw": "2026.2.17",
     "typescript": "^5.9.3",

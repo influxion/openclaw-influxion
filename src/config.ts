@@ -28,7 +28,7 @@ const InfluxionUploadConfigBaseSchema = z.object({
   every: z.string().default("15m"),
   retryAttempts: z.number().int().min(0).default(3),
   retryBackoffMs: z.number().int().min(0).default(5_000),
-  timeoutMs: z.number().int().min(1_000).default(30_000),
+  timeoutMs: z.number().int().min(1_000).default(120_000),
   maxFilesPerRun: z.number().int().min(1).default(50),
   /** Max total bytes to upload in one cycle. Default: 10 MB. */
   maxBytesPerRun: z.number().int().min(1).default(10 * 1024 * 1024),
@@ -62,10 +62,8 @@ const InfluxionFilterConfigBaseSchema = z.object({
   minMessages: z.number().int().min(0).default(2),
   /** Skip files smaller than this many bytes. */
   minBytes: z.number().int().min(0).default(512),
-  /** Future: include skill files in uploads. */
-  includeSkills: z.boolean().default(false),
-  /** Future: include config snapshots in uploads. */
-  includeConfig: z.boolean().default(false),
+  /** Include skill files in uploads. */
+  includeSkills: z.boolean().default(true),
 });
 
 /**

@@ -1,9 +1,15 @@
-import type { OpenClawPluginService, OpenClawPluginServiceContext } from "openclaw/plugin-sdk";
+import type {
+  OpenClawConfig,
+  OpenClawPluginService,
+  OpenClawPluginServiceContext,
+} from "openclaw/plugin-sdk";
 import { parseIntervalMs } from "./config.js";
 import type { InfluxionConfig } from "./config.js";
 import { readLedger, writeLedger } from "./ledger.js";
 import { collectEligibleFiles } from "./collector.js";
 import { uploadBatch } from "./uploader.js";
+import { collectSkills } from "./skills-collector.js";
+import { uploadSkillsBatch } from "./skills-uploader.js";
 
 /** Minimal logging interface used by the upload cycle, so the CLI can also call it. */
 export type UploadCycleLogger = {
@@ -15,6 +21,7 @@ export type UploadCycleLogger = {
 export type UploadCycleContext = {
   stateDir: string;
   logger: UploadCycleLogger;
+  openClawConfig: OpenClawConfig | null;
 };
 
 export type UploadCycleResult = {
@@ -22,6 +29,8 @@ export type UploadCycleResult = {
   failed: number;
   totalLines: number;
   totalBytes: number;
+  skillsUploaded: number;
+  skillsFailed: number;
 };
 
 /**
@@ -32,7 +41,7 @@ export async function runUploadCycle(
   ctx: UploadCycleContext,
   cfg: InfluxionConfig,
 ): Promise<UploadCycleResult> {
-  const { stateDir, logger } = ctx;
+  const { stateDir, logger, openClawConfig } = ctx;
 
   const ledger = await readLedger(stateDir);
 
@@ -43,57 +52,106 @@ export async function runUploadCycle(
     cfg.upload.maxFilesPerRun,
   );
 
-  if (files.length === 0) {
-    logger.info("influxion: no new or modified files to upload");
-    ledger.lastRunAt = new Date().toISOString();
-    await writeLedger(stateDir, ledger);
-    return { uploaded: 0, failed: 0, totalLines: 0, totalBytes: 0 };
-  }
-
-  logger.info(`influxion: uploading ${files.length} file(s)...`);
-
-  const result = await uploadBatch(files, cfg, cfg.upload.maxBytesPerRun);
-
-  // Update ledger entries for successfully uploaded files
   const now = new Date().toISOString();
-  for (const { file, uploadedLines, etag } of result.uploaded) {
-    ledger.files[file.ledgerKey] = {
-      uploadedAt: now,
-      uploadedSizeBytes: file.stat.size,
-      uploadedLines,
-      etag,
-    };
+
+  let sessionUploaded = 0;
+  let sessionFailed = 0;
+  let totalLines = 0;
+  let totalBytes = 0;
+
+  if (files.length === 0) {
+    logger.info("influxion: no new or modified session files to upload");
+  } else {
+    logger.info(`influxion: uploading ${files.length} session file(s)...`);
+
+    const result = await uploadBatch(files, cfg, cfg.upload.maxBytesPerRun);
+
+    // Update ledger entries for successfully uploaded files
+    for (const { file, uploadedLines, etag } of result.uploaded) {
+      ledger.files[file.ledgerKey] = {
+        uploadedAt: now,
+        uploadedSizeBytes: file.stat.size,
+        uploadedLines,
+        etag,
+      };
+    }
+
+    if (result.failed.length > 0) {
+      const summary = result.failed
+        .map((f) => `${f.file.sessionId}: ${f.error}`)
+        .join(", ");
+      logger.warn(`influxion: ${result.failed.length} session file(s) failed — ${summary}`);
+    }
+
+    sessionUploaded = result.uploaded.length;
+    sessionFailed = result.failed.length;
+    totalLines = result.totalLines;
+    totalBytes = result.totalBytes;
   }
+
+  // Skills upload cycle
+  let skillsUploaded = 0;
+  let skillsFailed = 0;
+
+  if (cfg.filter.includeSkills) {
+    const skills = await collectSkills(stateDir, ledger, cfg.filter, openClawConfig);
+    if (skills.length === 0) {
+      logger.info("influxion: no new or modified skills to upload");
+    } else {
+      logger.info(`influxion: uploading ${skills.length} skill(s)...`);
+      const skillResult = await uploadSkillsBatch(skills, cfg);
+
+      for (const { skill } of skillResult.uploaded) {
+        ledger.skills[skill.ledgerKey] = {
+          uploadedAt: now,
+          contentHash: skill.contentHash,
+          available: skill.available,
+        };
+      }
+
+      if (skillResult.failed.length > 0) {
+        const summary = skillResult.failed
+          .map((f) => `${f.skill.name}: ${f.error}`)
+          .join(", ");
+        logger.warn(`influxion: ${skillResult.failed.length} skill(s) failed — ${summary}`);
+      }
+
+      skillsUploaded = skillResult.uploaded.length;
+      skillsFailed = skillResult.failed.length;
+    }
+  }
+
   ledger.lastRunAt = now;
   await writeLedger(stateDir, ledger);
 
-  if (result.failed.length > 0) {
-    const summary = result.failed
-      .map((f) => `${f.file.sessionId}: ${f.error}`)
-      .join(", ");
-    logger.warn(`influxion: ${result.failed.length} file(s) failed to upload — ${summary}`);
-  }
-
   logger.info(
-    `influxion: done — ${result.uploaded.length} uploaded, ` +
-      `${result.totalLines} lines, ${result.totalBytes} bytes`,
+    `influxion: done — sessions: ${sessionUploaded} uploaded, ` +
+      `${totalLines} lines, ${totalBytes} bytes` +
+      (cfg.filter.includeSkills
+        ? `; skills: ${skillsUploaded} uploaded`
+        : ""),
   );
 
   return {
-    uploaded: result.uploaded.length,
-    failed: result.failed.length,
-    totalLines: result.totalLines,
-    totalBytes: result.totalBytes,
+    uploaded: sessionUploaded,
+    failed: sessionFailed,
+    totalLines,
+    totalBytes,
+    skillsUploaded,
+    skillsFailed,
   };
 }
 
 /**
  * Create the background UploadService that runs on a configurable interval.
  * Registered via `api.registerService()` in the plugin entry point.
- * Accepts `null` when the plugin is installed but not yet configured — the
+ * Accepts `null` cfg when the plugin is installed but not yet configured — the
  * service will log a warning on start and do nothing until configured.
  */
-export function createUploadService(cfg: InfluxionConfig | null): OpenClawPluginService {
+export function createUploadService(
+  cfg: InfluxionConfig | null,
+  openClawConfig: OpenClawConfig | null,
+): OpenClawPluginService {
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   return {
@@ -116,7 +174,7 @@ export function createUploadService(cfg: InfluxionConfig | null): OpenClawPlugin
       const run = async () => {
         try {
           await runUploadCycle(
-            { stateDir: ctx.stateDir, logger: ctx.logger },
+            { stateDir: ctx.stateDir, logger: ctx.logger, openClawConfig },
             cfg,
           );
         } catch (err) {

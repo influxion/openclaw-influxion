@@ -11,11 +11,21 @@ export type LedgerEntry = {
   etag: string;
 };
 
+export type SkillLedgerEntry = {
+  uploadedAt: string;        // ISO 8601
+  /** sha256 hash of SKILL.md content at upload time, e.g. "sha256:abc..." */
+  contentHash: string;
+  /** Whether the skill was available to the agent at upload time. */
+  available: boolean;
+};
+
 export type Ledger = {
   schemaVersion: 1;
   lastRunAt: string | null;
   /** Map of relative path (e.g. "agents/main/sessions/abc.jsonl") to entry. */
   files: Record<string, LedgerEntry>;
+  /** Map of skill ledger key (e.g. "skills/managed/github") to entry. */
+  skills: Record<string, SkillLedgerEntry>;
 };
 
 function ledgerPath(stateDir: string): string {
@@ -29,6 +39,10 @@ export async function readLedger(stateDir: string): Promise<Ledger> {
     const parsed = JSON.parse(raw) as Ledger;
     if (parsed.schemaVersion !== 1) {
       return emptyLedger();
+    }
+    // Backfill skills map for ledgers written before skills support was added
+    if (!parsed.skills) {
+      parsed.skills = {};
     }
     return parsed;
   } catch (err: unknown) {
@@ -46,7 +60,20 @@ export async function writeLedger(stateDir: string, ledger: Ledger): Promise<voi
 }
 
 export function emptyLedger(): Ledger {
-  return { schemaVersion: 1, lastRunAt: null, files: {} };
+  return { schemaVersion: 1, lastRunAt: null, files: {}, skills: {} };
+}
+
+/**
+ * Returns true if the skill needs uploading: never uploaded before, content
+ * changed, or availability changed since the last upload.
+ */
+export function isSkillDirty(
+  entry: SkillLedgerEntry | undefined,
+  contentHash: string,
+  available: boolean,
+): boolean {
+  if (!entry) return true;
+  return entry.contentHash !== contentHash || entry.available !== available;
 }
 
 /**
