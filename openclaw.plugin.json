@@ -12,6 +12,11 @@
       "placeholder": "my-openclaw-setup",
       "help": "A logical name for this OpenClaw installation (e.g. work-laptop, home-server)"
     },
+    "projectId": {
+      "label": "Project ID",
+      "placeholder": "00000000-0000-0000-0000-000000000000",
+      "help": "Influxion project ID. Found in your project settings."
+    },
     "apiUrl": {
       "label": "API URL",
       "advanced": true,
@@ -42,6 +47,9 @@
         "type": "string"
       },
       "deploymentId": {
+        "type": "string"
+      },
+      "projectId": {
         "type": "string"
       },
       "apiUrl": {

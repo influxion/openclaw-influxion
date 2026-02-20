@@ -29,7 +29,8 @@ Plugin config lives inside the `plugins.entries.influxion.config` key in `~/.ope
         "enabled": true,
         "config": {
           "apiKey": "sk-xxxxxxxxxxxx",
-          "deploymentId": "my-openclaw-setup"
+          "deploymentId": "my-openclaw-setup",
+          "projectId": "00000000-0000-0000-0000-000000000000"
         }
       }
     }
@@ -51,6 +52,7 @@ Restart the gateway after saving (`openclaw gateway restart` or via the OpenClaw
           // Required
           "apiKey": "sk-xxxxxxxxxxxx",
           "deploymentId": "my-openclaw-setup",
+          "projectId": "00000000-0000-0000-0000-000000000000",
 
           // Optional — override the API base URL (e.g. for self-hosted or local dev)
           "apiUrl": "https://api.influxion.io",

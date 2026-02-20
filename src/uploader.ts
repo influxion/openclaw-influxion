@@ -27,7 +27,11 @@ type IngestResponse = {
 /** One envelope record sent to Influxion per JSONL line. */
 type SessionLineEnvelope = {
   deploymentId: string;
+  projectId: string;
+  /** OpenClaw agent ID — the directory name under ~/.openclaw/agents/ (e.g. "main"). */
   agentId: string;
+  /** Agent name — identical to agentId; the directory name is the canonical agent name. */
+  agentName: string;
   sessionId: string;
   sessionFile: string;
   lineIndex: number;
@@ -35,35 +39,15 @@ type SessionLineEnvelope = {
   payload: unknown;
 };
 
-function buildEnvelopeLine(
-  deploymentId: string,
-  agentId: string,
-  sessionId: string,
-  sessionFile: string,
-  lineIndex: number,
-  capturedAt: string,
-  payload: unknown,
-): string {
-  const envelope: SessionLineEnvelope = {
-    deploymentId,
-    agentId,
-    sessionId,
-    sessionFile,
-    lineIndex,
-    capturedAt,
-    payload,
-  };
-  return JSON.stringify(envelope);
-}
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postNdjson(
+async function postJson(
   url: string,
   apiKey: string,
-  body: string,
+  body: unknown,
   timeoutMs: number,
 ): Promise<IngestResponse> {
   const controller = new AbortController();
@@ -73,9 +57,9 @@ async function postNdjson(
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/x-ndjson",
+        "Content-Type": "application/json",
       },
-      body,
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -99,26 +83,28 @@ async function uploadFileWithRetry(
   const capturedAt = new Date().toISOString();
   const sessionFile = file.ledgerKey; // e.g. "agents/main/sessions/abc.jsonl"
 
-  const ndJsonLines: string[] = lines.map((rawLine, i) => {
+  const envelopes: SessionLineEnvelope[] = lines.map((rawLine, i) => {
     let payload: unknown;
     try {
       payload = JSON.parse(rawLine);
     } catch {
-      // Preserve unparseable lines as raw strings
       payload = { raw: rawLine };
     }
-    return buildEnvelopeLine(
-      config.deploymentId,
-      file.agentId,
-      file.sessionId,
+    const env: SessionLineEnvelope = {
+      deploymentId: config.deploymentId,
+      projectId: config.projectId,
+      agentId: file.agentId,
+      agentName: file.agentId,
+      sessionId: file.sessionId,
       sessionFile,
-      i,
+      lineIndex: i,
       capturedAt,
       payload,
-    );
+    };
+    return env;
   });
 
-  const body = ndJsonLines.join("\n");
+  const requestBody = { lines: envelopes };
   const etag = computeEtag(content);
   const url = `${config.apiUrl.replace(/\/+$/, "")}/v1/openclaw/ingest/sessions`;
 
@@ -129,7 +115,7 @@ async function uploadFileWithRetry(
       await sleep(config.upload.retryBackoffMs * attempt);
     }
     try {
-      await postNdjson(url, config.apiKey, body, config.upload.timeoutMs);
+      await postJson(url, config.apiKey, requestBody, config.upload.timeoutMs);
       return { file, uploadedLines: lines.length, etag };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));

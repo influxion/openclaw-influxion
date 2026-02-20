@@ -87,6 +87,8 @@ export const InfluxionConfigSchema = z.object({
   deploymentId: z.string().min(1),
   /** API base URL. Override for self-hosted Influxion. */
   apiUrl: z.url().default("https://api.influxion.io"),
+  /** Influxion project ID. Associates sessions with a specific project in your workspace. */
+  projectId: z.string().min(1),
   upload: InfluxionUploadConfigSchema as z.ZodType<InfluxionUploadConfig>,
   filter: InfluxionFilterConfigSchema as z.ZodType<InfluxionFilterConfig>,
 });
