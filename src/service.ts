@@ -6,8 +6,8 @@ import type {
 import { parseIntervalMs } from "./config.js";
 import type { InfluxionConfig } from "./config.js";
 import { readLedger, writeLedger } from "./ledger.js";
-import { collectEligibleFiles } from "./collector.js";
-import { uploadBatch } from "./uploader.js";
+import { collectEligibleSessions } from "./sessions-collector.js";
+import { uploadSessionsBatch } from "./sessions-uploader.js";
 import { collectSkills } from "./skills-collector.js";
 import { uploadSkillsBatch } from "./skills-uploader.js";
 
@@ -45,7 +45,7 @@ export async function runUploadCycle(
 
   const ledger = await readLedger(stateDir);
 
-  const files = await collectEligibleFiles(
+  const files = await collectEligibleSessions(
     stateDir,
     ledger,
     cfg.filter,
@@ -64,7 +64,7 @@ export async function runUploadCycle(
   } else {
     logger.info(`influxion: uploading ${files.length} session file(s)...`);
 
-    const result = await uploadBatch(files, cfg, cfg.upload.maxBytesPerRun);
+    const result = await uploadSessionsBatch(files, cfg, cfg.upload.maxBytesPerRun);
 
     // Update ledger entries for successfully uploaded files
     for (const { file, uploadedLines, etag } of result.uploaded) {

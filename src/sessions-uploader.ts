@@ -1,17 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { computeEtag } from "./ledger.js";
-import type { CollectedFile } from "./collector.js";
+import type { CollectedSession } from "./sessions-collector.js";
 import type { InfluxionConfig } from "./config.js";
 
-export type UploadedFileResult = {
-  file: CollectedFile;
+export type UploadedSessionResult = {
+  file: CollectedSession;
   uploadedLines: number;
   etag: string;
 };
 
-export type UploadResult = {
-  uploaded: UploadedFileResult[];
-  failed: Array<{ file: CollectedFile; error: string }>;
+export type SessionUploadResult = {
+  uploaded: UploadedSessionResult[];
+  failed: Array<{ file: CollectedSession; error: string }>;
   totalLines: number;
   totalBytes: number;
 };
@@ -75,9 +75,9 @@ async function postJson(
 }
 
 async function uploadFileWithRetry(
-  file: CollectedFile,
+  file: CollectedSession,
   config: InfluxionConfig,
-): Promise<UploadedFileResult> {
+): Promise<UploadedSessionResult> {
   const content = await readFile(file.filePath, "utf8");
   const lines = content.split("\n").filter((l) => l.trim());
   const capturedAt = new Date().toISOString();
@@ -130,12 +130,12 @@ async function uploadFileWithRetry(
  * Respects `maxBytesPerRun`: stops accepting new files once the byte budget
  * would be exceeded (already-started files are not interrupted).
  */
-export async function uploadBatch(
-  files: CollectedFile[],
+export async function uploadSessionsBatch(
+  files: CollectedSession[],
   config: InfluxionConfig,
   maxBytesPerRun: number,
-): Promise<UploadResult> {
-  const result: UploadResult = {
+): Promise<SessionUploadResult> {
+  const result: SessionUploadResult = {
     uploaded: [],
     failed: [],
     totalLines: 0,

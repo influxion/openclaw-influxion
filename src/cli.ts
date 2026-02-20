@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { InfluxionConfig } from "./config.js";
 import { readLedger } from "./ledger.js";
-import { collectEligibleFiles } from "./collector.js";
+import { collectEligibleSessions } from "./sessions-collector.js";
 import { collectSkills } from "./skills-collector.js";
 import { runUploadCycle } from "./service.js";
 
@@ -73,7 +73,7 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
         ]);
 
         const [pending, pendingSkills] = await Promise.all([
-          collectEligibleFiles(stateDir, ledger, cfg.filter, cfg.upload.maxFilesPerRun),
+          collectEligibleSessions(stateDir, ledger, cfg.filter, cfg.upload.maxFilesPerRun),
           cfg.filter.includeSkills
             ? collectSkills(stateDir, ledger, cfg.filter, openClawConfig)
             : Promise.resolve([]),

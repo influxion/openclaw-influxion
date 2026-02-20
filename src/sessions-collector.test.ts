@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { collectEligibleFiles } from "./collector.js";
+import { collectEligibleSessions } from "./sessions-collector.js";
 import { emptyLedger, type Ledger } from "./ledger.js";
 import { InfluxionFilterConfigSchema } from "./config.js";
 
@@ -22,7 +22,7 @@ async function createAgentSession(
 let stateDir: string;
 
 beforeEach(async () => {
-  stateDir = await mkdtemp(join(tmpdir(), "influxion-collector-"));
+  stateDir = await mkdtemp(join(tmpdir(), "influxion-sessions-collector-"));
 });
 
 afterEach(async () => {
@@ -31,16 +31,16 @@ afterEach(async () => {
 
 // ── Basic collection ─────────────────────────────────────────────────────────
 
-describe("collectEligibleFiles", () => {
+describe("collectEligibleSessions", () => {
   it("returns empty array when agents directory does not exist", async () => {
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 100);
     expect(files).toEqual([]);
   });
 
   it("collects a single new session file", async () => {
     await createAgentSession(stateDir, "main", "abc123", '{"type":"message"}\n');
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 100);
 
     expect(files).toHaveLength(1);
     expect(files[0].agentId).toBe("main");
@@ -52,7 +52,7 @@ describe("collectEligibleFiles", () => {
     await createAgentSession(stateDir, "main", "session1", '{"type":"message"}\n');
     await createAgentSession(stateDir, "coder", "session2", '{"type":"message"}\n');
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 100);
 
     const agentIds = files.map((f) => f.agentId).sort();
     expect(agentIds).toEqual(["coder", "main"]);
@@ -65,7 +65,7 @@ describe("collectEligibleFiles", () => {
     await writeFile(join(sessionsDir, "notes.txt"), "notes", "utf8");
     await writeFile(join(sessionsDir, "abc.jsonl"), '{"type":"message"}\n', "utf8");
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 100);
 
     expect(files).toHaveLength(1);
     expect(files[0].sessionId).toBe("abc");
@@ -75,7 +75,7 @@ describe("collectEligibleFiles", () => {
     await createAgentSession(stateDir, "main", "abc123", '{"type":"message"}\n');
 
     // Run first collection to discover the file
-    const firstRun = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 100);
+    const firstRun = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 100);
     expect(firstRun).toHaveLength(1);
 
     // Build a ledger that marks the file as already uploaded with current mtime
@@ -94,7 +94,7 @@ describe("collectEligibleFiles", () => {
     };
 
     // Second run with up-to-date ledger: should skip the file
-    const secondRun = await collectEligibleFiles(stateDir, ledger, defaultFilter, 100);
+    const secondRun = await collectEligibleSessions(stateDir, ledger, defaultFilter, 100);
     expect(secondRun).toHaveLength(0);
   });
 
@@ -103,7 +103,7 @@ describe("collectEligibleFiles", () => {
       await createAgentSession(stateDir, "main", `session${i}`, '{"type":"message"}\n');
     }
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), defaultFilter, 3);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), defaultFilter, 3);
     expect(files).toHaveLength(3);
   });
 
@@ -117,7 +117,7 @@ describe("collectEligibleFiles", () => {
       minMessages: 0,
     });
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), filter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), filter, 100);
 
     expect(files).toHaveLength(1);
     expect(files[0].agentId).toBe("main");
@@ -133,7 +133,7 @@ describe("collectEligibleFiles", () => {
       minMessages: 0,
     });
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), filter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), filter, 100);
 
     expect(files).toHaveLength(1);
     expect(files[0].sessionId).toBe("real-session");
@@ -149,7 +149,7 @@ describe("collectEligibleFiles", () => {
 
     const filter = InfluxionFilterConfigSchema.parse({ minBytes: 100, minMessages: 0 });
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), filter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), filter, 100);
 
     // Only the normal file should pass (tiny is 2 bytes)
     const ids = files.map((f) => f.sessionId);
@@ -170,7 +170,7 @@ describe("collectEligibleFiles", () => {
 
     const filter = InfluxionFilterConfigSchema.parse({ minBytes: 0, minMessages: 2 });
 
-    const files = await collectEligibleFiles(stateDir, emptyLedger(), filter, 100);
+    const files = await collectEligibleSessions(stateDir, emptyLedger(), filter, 100);
 
     expect(files).toHaveLength(1);
     expect(files[0].sessionId).toBe("long");

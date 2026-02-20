@@ -11,7 +11,7 @@ import {
   passesSessionPatternFilter,
 } from "./filter.js";
 
-export type CollectedFile = {
+export type CollectedSession = {
   agentId: string;
   sessionId: string;
   /** Absolute path to the .jsonl file. */
@@ -33,12 +33,12 @@ export type CollectedFile = {
  *
  * Returns at most `maxFiles` results.
  */
-export async function collectEligibleFiles(
+export async function collectEligibleSessions(
   stateDir: string,
   ledger: Ledger,
   filter: InfluxionFilterConfig,
   maxFiles: number,
-): Promise<CollectedFile[]> {
+): Promise<CollectedSession[]> {
   const agentsDir = join(stateDir, "agents");
 
   let agentIds: string[];
@@ -49,7 +49,7 @@ export async function collectEligibleFiles(
     throw err;
   }
 
-  const results: CollectedFile[] = [];
+  const results: CollectedSession[] = [];
 
   for (const agentId of agentIds) {
     if (!passesAgentFilter(agentId, filter)) continue;
