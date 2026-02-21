@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
-import { join, dirname, resolve } from "node:path";
+import { accessSync, constants, existsSync } from "node:fs";
+import { join, dirname, resolve, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
 import os from "node:os";
 import { load as loadYaml } from "js-yaml";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
@@ -18,12 +18,35 @@ export type SkillSource =
   | "agents-skills-personal"
   | "agents-skills-project";
 
+/**
+ * The OpenClaw-specific sub-block from a SKILL.md frontmatter's metadata field.
+ * Matches OpenClawSkillMetadata from openclaw's src/agents/skills/types.ts.
+ */
+export type SkillMetadata = {
+  always?: boolean;
+  skillKey?: string;
+  primaryEnv?: string;
+  os?: string[];
+  requires?: {
+    bins?: string[];
+    anyBins?: string[];
+    env?: string[];
+    config?: string[];
+  };
+  [key: string]: unknown;
+};
+
 export type SkillFrontmatter = {
   name?: string;
   description?: string;
   license?: string;
   compatibility?: string;
-  metadata?: Record<string, unknown>;
+  /**
+   * The raw metadata block from the SKILL.md frontmatter, parsed by js-yaml
+   * as a flow mapping. OpenClaw-specific fields live under the `openclaw` key,
+   * e.g. `metadata.openclaw.requires`, `metadata.openclaw.os`.
+   */
+  metadata?: { openclaw?: SkillMetadata; [key: string]: unknown };
 };
 
 export type CollectedSkill = {
@@ -63,26 +86,91 @@ export function parseSkillFrontmatter(content: string): SkillFrontmatter {
 }
 
 /**
- * Compute whether a skill is available to the agent from config alone.
- * Mirrors OpenClaw's isBundledSkillAllowed and resolveSkillConfig logic.
- * Binary requirements are intentionally excluded — they are runtime/machine
- * concerns irrelevant to Influxion's skill gap analysis.
+ * Mirrors OpenClaw's hasBinary from src/shared/config-eval.ts.
+ * Scans PATH directories for an executable with the given name.
+ */
+function hasBinary(bin: string): boolean {
+  const parts = (process.env["PATH"] ?? "").split(delimiter).filter(Boolean);
+  for (const part of parts) {
+    try {
+      accessSync(join(part, bin), constants.X_OK);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Mirrors the isEnvSatisfied lambda from OpenClaw's buildSkillStatus.
+ * Checks process.env, per-skill env config, and apiKey shorthand.
+ */
+function isEnvSatisfied(
+  envName: string,
+  skillKey: string,
+  metadata: SkillMetadata,
+  cfg: OpenClawConfig | null,
+): boolean {
+  if (process.env[envName]) return true;
+  const skillCfg = cfg?.skills?.entries?.[skillKey] as Record<string, unknown> | undefined;
+  if (skillCfg?.["env"] && (skillCfg["env"] as Record<string, unknown>)[envName]) return true;
+  if (skillCfg?.["apiKey"] && metadata.primaryEnv === envName) return true;
+  return false;
+}
+
+/**
+ * Mirrors OpenClaw's isConfigPathTruthy — resolves a dot-notation path
+ * against the config object and checks if it is truthy.
+ */
+function isConfigSatisfied(pathStr: string, cfg: OpenClawConfig | null): boolean {
+  if (!cfg) return false;
+  const parts = pathStr.split(".");
+  let node: unknown = cfg;
+  for (const part of parts) {
+    if (node == null || typeof node !== "object") return false;
+    node = (node as Record<string, unknown>)[part];
+  }
+  return Boolean(node);
+}
+
+/**
+ * Compute whether a skill is available to the agent.
+ * Mirrors OpenClaw's buildSkillStatus eligibility formula:
+ *   eligible = !disabled && !blockedByAllowlist && requirementsSatisfied
  */
 function computeAvailable(
   source: SkillSource,
   skillKey: string,
   name: string,
+  metadata: SkillMetadata,
   cfg: OpenClawConfig | null,
 ): boolean {
-  const rawAllowlist = cfg?.skills?.allowBundled;
-  const allowlist = Array.isArray(rawAllowlist) ? rawAllowlist : [];
+  const disabled = cfg?.skills?.entries?.[skillKey]?.enabled === false;
+  const allowlist = Array.isArray(cfg?.skills?.allowBundled) ? cfg.skills.allowBundled : [];
   const blockedByAllowlist =
     source === "openclaw-bundled" &&
     allowlist.length > 0 &&
     !allowlist.includes(skillKey) &&
     !allowlist.includes(name);
-  const disabled = cfg?.skills?.entries?.[skillKey]?.enabled === false;
-  return !disabled && !blockedByAllowlist;
+
+  if (disabled || blockedByAllowlist) return false;
+
+  // metadata.always bypasses all requirement checks (mirrors OpenClaw's logic).
+  if (metadata.always === true) return true;
+
+  const requires = metadata.requires ?? {};
+  const bins = requires.bins ?? [];
+  const anyBins = requires.anyBins ?? [];
+  const envs = requires.env ?? [];
+  const configs = requires.config ?? [];
+  const osList = metadata.os ?? [];
+
+  if (bins.some((b) => !hasBinary(b))) return false;
+  if (anyBins.length > 0 && !anyBins.some(hasBinary)) return false;
+  if (envs.some((e) => !isEnvSatisfied(e, skillKey, metadata, cfg))) return false;
+  if (osList.length > 0 && !osList.includes(process.platform)) return false;
+  if (configs.some((p) => !isConfigSatisfied(p, cfg))) return false;
+
+  return true;
 }
 
 /**
@@ -269,12 +357,10 @@ async function collectFromDir(
 
     const frontmatter = parseSkillFrontmatter(content);
     const name = frontmatter.name ?? entry;
-    // skillKey mirrors openclaw: frontmatter.metadata.skillKey ?? dirName
-    const skillKey =
-      typeof frontmatter.metadata?.["skillKey"] === "string"
-        ? frontmatter.metadata["skillKey"]
-        : entry;
-    const available = computeAvailable(source, skillKey, name, openClawConfig);
+    // skillKey mirrors openclaw: metadata.openclaw.skillKey ?? dirName
+    const ocMeta = frontmatter.metadata?.openclaw ?? {};
+    const skillKey = typeof ocMeta.skillKey === "string" ? ocMeta.skillKey : entry;
+    const available = computeAvailable(source, skillKey, name, ocMeta, openClawConfig);
 
     if (!isSkillDirty(skillLedger[ledgerKey], contentHash, available)) {
       continue;
