@@ -9,7 +9,8 @@ import { readLedger, writeLedger } from "./ledger.js";
 import { collectEligibleSessions } from "./sessions-collector.js";
 import { uploadSessionsBatch } from "./sessions-uploader.js";
 import { collectSkills } from "./skills-collector.js";
-import { uploadSkillsBatch } from "./skills-uploader.js";
+import { uploadSkillsBatch, type SkillsBatch } from "./skills-uploader.js";
+import { isSkillDirty } from "./ledger.js";
 
 /** Minimal logging interface used by the upload cycle, so the CLI can also call it. */
 export type UploadCycleLogger = {
@@ -94,19 +95,40 @@ export async function runUploadCycle(
   let skillsFailed = 0;
 
   if (cfg.filter.includeSkills) {
-    const skills = await collectSkills(stateDir, ledger, cfg.filter, openClawConfig);
-    if (skills.length === 0) {
-      logger.info("influxion: no new or modified skills to upload");
-    } else {
-      logger.info(`influxion: uploading ${skills.length} skill(s)...`);
-      const skillResult = await uploadSkillsBatch(skills, cfg);
+    // Collect the full current set of skills (all agents); the gateway will use
+    // the complete manifest to detect and mark removed skills as unavailable.
+    const allSkills = await collectSkills(stateDir, cfg.filter, openClawConfig);
 
+    if (allSkills.length === 0) {
+      logger.info("influxion: no skills found to upload");
+    } else {
+      // Split into dirty (need content) and clean (manifest-only)
+      const batch: SkillsBatch = { dirty: [], clean: [] };
+      for (const skill of allSkills) {
+        const entry = ledger.skills[skill.ledgerKey];
+        if (isSkillDirty(entry, skill.contentHash, skill.available)) {
+          batch.dirty.push(skill);
+        } else {
+          batch.clean.push(skill);
+        }
+      }
+
+      logger.info(
+        `influxion: syncing ${allSkills.length} skill(s) ` +
+          `(${batch.dirty.length} dirty, ${batch.clean.length} clean)...`,
+      );
+
+      const skillResult = await uploadSkillsBatch(batch, cfg);
+
+      // Only update ledger entries for dirty skills; clean ones are unchanged
       for (const { skill } of skillResult.uploaded) {
-        ledger.skills[skill.ledgerKey] = {
-          uploadedAt: now,
-          contentHash: skill.contentHash,
-          available: skill.available,
-        };
+        if (batch.dirty.includes(skill)) {
+          ledger.skills[skill.ledgerKey] = {
+            uploadedAt: now,
+            contentHash: skill.contentHash,
+            available: skill.available,
+          };
+        }
       }
 
       if (skillResult.failed.length > 0) {
@@ -116,7 +138,9 @@ export async function runUploadCycle(
         logger.warn(`influxion: ${skillResult.failed.length} skill(s) failed — ${summary}`);
       }
 
-      skillsUploaded = skillResult.uploaded.length;
+      skillsUploaded = batch.dirty.length - skillResult.failed.filter(
+        (f) => batch.dirty.includes(f.skill),
+      ).length;
       skillsFailed = skillResult.failed.length;
     }
   }

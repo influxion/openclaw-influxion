@@ -11,7 +11,8 @@ type SkillEnvelope = {
   source: string;
   metadataVersion: string | null;
   metadataAuthor: string | null;
-  content: string;
+  /** Full SKILL.md text. Omitted for clean (unchanged) skills in manifest-only entries. */
+  content?: string;
   contentHash: string;
   available: boolean;
 };
@@ -30,6 +31,18 @@ export type SkillUploadResult = {
 export type SkillsBatchResult = {
   uploaded: SkillUploadResult[];
   failed: Array<{ skill: CollectedSkill; error: string }>;
+}
+
+/**
+ * The full batch sent in one request: dirty skills carry their SKILL.md content
+ * while clean skills are manifest-only (no content field). fullSync=true tells
+ * the gateway to mark any DB rows absent from this manifest as unavailable.
+ */
+export type SkillsBatch = {
+  /** Skills whose content has changed — full content included. */
+  dirty: CollectedSkill[];
+  /** Skills that are unchanged — manifest metadata only, no content. */
+  clean: CollectedSkill[];
 };
 
 async function sleep(ms: number): Promise<void> {
@@ -75,30 +88,45 @@ function resolveMetadataString(
 }
 
 /**
- * Upload a batch of collected skills to the Influxion API.
- * Sends all skills in a single request; retries the whole batch on failure.
+ * Upload a batch of skills to the Influxion API.
+ *
+ * Dirty skills carry their full SKILL.md content; clean skills are sent as
+ * manifest-only entries (no content field). Setting fullSync=true tells the
+ * gateway to mark any DB rows absent from this manifest as unavailable,
+ * which handles skill removals automatically.
+ *
+ * The entire batch is sent in a single request and retried as a unit on failure.
  */
 export async function uploadSkillsBatch(
-  skills: CollectedSkill[],
+  batch: SkillsBatch,
   config: InfluxionConfig,
 ): Promise<SkillsBatchResult> {
-  if (skills.length === 0) {
+  const allSkills = [...batch.dirty, ...batch.clean];
+  if (allSkills.length === 0) {
     return { uploaded: [], failed: [] };
   }
 
-  const envelopes: SkillEnvelope[] = skills.map((skill) => ({
-    deploymentId: config.deploymentId,
-    projectId: config.projectId,
-    agentName: skill.agentName,
-    skillName: skill.name,
-    skillDescription: skill.frontmatter.description ?? null,
-    source: skill.source,
-    metadataVersion: resolveMetadataString(skill.frontmatter.metadata, "version"),
-    metadataAuthor: resolveMetadataString(skill.frontmatter.metadata, "author"),
-    content: skill.content,
-    contentHash: skill.contentHash,
-    available: skill.available,
-  }));
+  const dirtySet = new Set(batch.dirty.map((s) => s.ledgerKey));
+
+  const envelopes: SkillEnvelope[] = allSkills.map((skill) => {
+    const envelope: SkillEnvelope = {
+      deploymentId: config.deploymentId,
+      projectId: config.projectId,
+      agentName: skill.agentName,
+      skillName: skill.name,
+      skillDescription: skill.frontmatter.description ?? null,
+      source: skill.source,
+      metadataVersion: resolveMetadataString(skill.frontmatter.metadata, "version"),
+      metadataAuthor: resolveMetadataString(skill.frontmatter.metadata, "author"),
+      contentHash: skill.contentHash,
+      available: skill.available,
+    };
+    // Only include full content for dirty skills
+    if (dirtySet.has(skill.ledgerKey)) {
+      envelope.content = skill.content;
+    }
+    return envelope;
+  });
 
   const url = `${config.apiUrl.replace(/\/+$/, "")}/v1/openclaw/ingest/skills`;
   let lastError: Error | null = null;
@@ -108,9 +136,14 @@ export async function uploadSkillsBatch(
       await sleep(config.upload.retryBackoffMs * attempt);
     }
     try {
-      await postJson(url, config.apiKey, { skills: envelopes }, config.upload.timeoutMs);
+      await postJson(
+        url,
+        config.apiKey,
+        { fullSync: true, skills: envelopes },
+        config.upload.timeoutMs,
+      );
       return {
-        uploaded: skills.map((skill) => ({ skill })),
+        uploaded: allSkills.map((skill) => ({ skill })),
         failed: [],
       };
     } catch (err) {
@@ -121,6 +154,6 @@ export async function uploadSkillsBatch(
   const error = lastError?.message ?? "Upload failed after all retry attempts";
   return {
     uploaded: [],
-    failed: skills.map((skill) => ({ skill, error })),
+    failed: allSkills.map((skill) => ({ skill, error })),
   };
 }

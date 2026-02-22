@@ -7,8 +7,6 @@ import { fileURLToPath } from "node:url";
 import os from "node:os";
 import { load as loadYaml } from "js-yaml";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
-import type { Ledger, SkillLedgerEntry } from "./ledger.js";
-import { isSkillDirty } from "./ledger.js";
 import type { InfluxionFilterConfig } from "./config.js";
 
 export type SkillSource =
@@ -322,7 +320,6 @@ function resolveAgentWorkspaceDir(
  * @param source - Skill source label.
  * @param agentName - Agent this collection belongs to.
  * @param ledgerKeyPrefix - Prefix for ledger keys, e.g. "skills/main/managed".
- * @param skillLedger - Current ledger entries for dirty-checking.
  * @param openClawConfig - OpenClaw config for status computation.
  */
 async function collectFromDir(
@@ -330,7 +327,6 @@ async function collectFromDir(
   source: SkillSource,
   agentName: string,
   ledgerKeyPrefix: string,
-  skillLedger: Record<string, SkillLedgerEntry>,
   openClawConfig: OpenClawConfig | null,
 ): Promise<CollectedSkill[]> {
   let entries: string[];
@@ -361,10 +357,6 @@ async function collectFromDir(
     const ocMeta = frontmatter.metadata?.openclaw ?? {};
     const skillKey = typeof ocMeta.skillKey === "string" ? ocMeta.skillKey : entry;
     const available = computeAvailable(source, skillKey, name, ocMeta, openClawConfig);
-
-    if (!isSkillDirty(skillLedger[ledgerKey], contentHash, available)) {
-      continue;
-    }
 
     results.push({
       name,
@@ -403,12 +395,10 @@ async function collectFromDir(
  */
 export async function collectSkills(
   stateDir: string,
-  ledger: Ledger,
   _filter: InfluxionFilterConfig,
   openClawConfig: OpenClawConfig | null,
 ): Promise<CollectedSkill[]> {
   const dirs = resolveSkillDirs(stateDir);
-  const skillLedger = ledger.skills ?? {};
   const agentIds = listAgentIds(openClawConfig);
 
   // Track canonical workspace paths to avoid scanning the same directory for
@@ -431,7 +421,6 @@ export async function collectSkills(
           "openclaw-workspace",
           agentId,
           `skills/${agentId}/openclaw-workspace`,
-          skillLedger,
           openClawConfig,
         ),
       );
@@ -441,7 +430,6 @@ export async function collectSkills(
           "agents-skills-project",
           agentId,
           `skills/${agentId}/agents-skills-project`,
-          skillLedger,
           openClawConfig,
         ),
       );
@@ -455,7 +443,6 @@ export async function collectSkills(
         "openclaw-managed",
         agentId,
         `skills/${agentId}/openclaw-managed`,
-        skillLedger,
         openClawConfig,
       ),
     );
@@ -466,7 +453,6 @@ export async function collectSkills(
           "openclaw-bundled",
           agentId,
           `skills/${agentId}/openclaw-bundled`,
-          skillLedger,
           openClawConfig,
         ),
       );
@@ -477,7 +463,6 @@ export async function collectSkills(
         "agents-skills-personal",
         agentId,
         `skills/${agentId}/agents-skills-personal`,
-        skillLedger,
         openClawConfig,
       ),
     );

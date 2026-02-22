@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import type { InfluxionConfig } from "./config.js";
-import { readLedger } from "./ledger.js";
+import { readLedger, writeLedger, isSkillDirty } from "./ledger.js";
 import { collectEligibleSessions } from "./sessions-collector.js";
 import { collectSkills } from "./skills-collector.js";
 import { runUploadCycle } from "./service.js";
@@ -60,7 +60,8 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
     influxion
       .command("status")
       .description("Show Influxion plugin status and pending file count")
-      .action(async () => {
+      .option("--verbose", "List all known skills and pending session files")
+      .action(async (opts: { verbose?: boolean }) => {
         if (!cfg) {
           console.warn(NOT_CONFIGURED_MSG);
           return;
@@ -72,12 +73,16 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
           loadOpenClawConfig(stateDir),
         ]);
 
-        const [pending, pendingSkills] = await Promise.all([
+        const [pendingSessions, allSkills] = await Promise.all([
           collectEligibleSessions(stateDir, ledger, cfg.filter, cfg.upload.maxFilesPerRun),
           cfg.filter.includeSkills
-            ? collectSkills(stateDir, ledger, cfg.filter, openClawConfig)
+            ? collectSkills(stateDir, cfg.filter, openClawConfig)
             : Promise.resolve([]),
         ]);
+
+        const dirtySkills = allSkills.filter((s) =>
+          isSkillDirty(ledger.skills[s.ledgerKey], s.contentHash, s.available),
+        );
 
         const uploadedCount = Object.keys(ledger.files).length;
         const uploadedSkillsCount = Object.keys(ledger.skills ?? {}).length;
@@ -92,27 +97,75 @@ export function registerInfluxionCli(cfg: InfluxionConfig | null) {
         console.log(`  Upload every:     ${cfg.upload.every}`);
         console.log(`  Skills upload:    ${cfg.filter.includeSkills ? "enabled" : "disabled"}`);
         console.log(`  Last run:         ${lastRun}`);
-        console.log(`  Pending sessions: ${pending.length}`);
+        console.log(`  Pending sessions: ${pendingSessions.length}`);
         console.log(`  Session records:  ${uploadedCount}`);
         if (cfg.filter.includeSkills) {
-          console.log(`  Pending skills:   ${pendingSkills.length}`);
+          console.log(`  Dirty skills:     ${dirtySkills.length} / ${allSkills.length}`);
           console.log(`  Skill records:    ${uploadedSkillsCount}`);
         }
 
-        if (pending.length > 0) {
-          console.log("");
-          console.log("  Pending sessions:");
-          for (const f of pending) {
-            console.log(`    ${f.agentId}/${f.sessionId}  (${formatBytes(f.stat.size)})`);
+        if (opts.verbose) {
+          if (pendingSessions.length > 0) {
+            console.log("");
+            console.log("  Pending sessions:");
+            for (const f of pendingSessions) {
+              console.log(`    ${f.agentId}/${f.sessionId}  (${formatBytes(f.stat.size)})`);
+            }
+          }
+          if (cfg.filter.includeSkills && allSkills.length > 0) {
+            console.log("");
+            console.log("  Skills:");
+            for (const s of allSkills) {
+              const dirty = isSkillDirty(
+                ledger.skills[s.ledgerKey],
+                s.contentHash,
+                s.available,
+              );
+              const flags = [
+                s.available ? "available" : "unavailable",
+                dirty ? "dirty" : "clean",
+              ].join(", ");
+              console.log(`    [${s.source}] ${s.agentName}/${s.name}  (${flags})`);
+            }
           }
         }
-        if (cfg.filter.includeSkills && pendingSkills.length > 0) {
-          console.log("");
-          console.log("  Pending skills:");
-          for (const s of pendingSkills) {
-            console.log(`    [${s.source}] ${s.name}`);
-          }
+        console.log("");
+      });
+
+    // ── influxion ledger reset ─────────────────────────────────────────────
+    influxion
+      .command("ledger reset")
+      .description(
+        "Clear local ledger entries so the next sync re-uploads from scratch. " +
+          "Use --skills or --sessions to reset only one side.",
+      )
+      .option("--skills", "Clear only skill ledger entries")
+      .option("--sessions", "Clear only session ledger entries")
+      .action(async (opts: { skills?: boolean; sessions?: boolean }) => {
+        if (!cfg) {
+          console.warn(NOT_CONFIGURED_MSG);
+          return;
         }
+
+        const stateDir = resolveStateDir();
+        const ledger = await readLedger(stateDir);
+
+        const resetSkills = !opts.sessions || opts.skills;
+        const resetSessions = !opts.skills || opts.sessions;
+
+        if (resetSkills) {
+          const count = Object.keys(ledger.skills).length;
+          ledger.skills = {};
+          console.log(`  Cleared ${count} skill ledger entry/entries.`);
+        }
+        if (resetSessions) {
+          const count = Object.keys(ledger.files).length;
+          ledger.files = {};
+          console.log(`  Cleared ${count} session ledger entry/entries.`);
+        }
+
+        await writeLedger(stateDir, ledger);
+        console.log("  Ledger reset. Run `openclaw influxion sync` to re-upload.");
         console.log("");
       });
 
